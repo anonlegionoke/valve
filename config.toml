@@ -1,0 +1,4 @@
+target_endpoint = "https://api.openai.com/v1/chat/completions"
+api_key = "sk-YOUR_API_KEY_HERE"
+# A regex rule that allows typical alphabetic streams. We use a broad rule here for testing.
+rule = "^[A-Za-z0-9 .,!?]*$"
