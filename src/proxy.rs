@@ -109,7 +109,13 @@ pub async fn chat_completions_handler(
                     }
 
                     if !token_str.is_empty() {
-                        if !engine.check_token(&token_str) {
+                        let start = std::time::Instant::now();
+                        let is_valid = engine.check_token(&token_str);
+                        let elapsed = start.elapsed();
+                        
+                        info!("Token evaluated in {}µs", elapsed.as_micros());
+
+                        if !is_valid {
                             warn!("🚨 STREAM KILLED: Token violated constraint. Token: {:?}", token_str);
                             break; // Terminate stream instantly
                         }
