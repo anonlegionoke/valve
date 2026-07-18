@@ -6,14 +6,14 @@ use axum::{
     response::sse::{Event, Sse},
 };
 use core::convert::Infallible;
-use eventsource_stream::Eventsource; // Or EventsourceExt, will fix if compile fails
+use eventsource_stream::Eventsource;
 use futures::StreamExt;
 use reqwest::Client;
 use serde_json::Value;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
-use tracing::{error, warn};
+use tracing::{error, warn, info};
 
 use crate::config::Config;
 use crate::engine::Engine;
@@ -29,8 +29,33 @@ pub async fn chat_completions_handler(
     body: Bytes,
 ) -> Result<impl IntoResponse, StatusCode> {
     
-    let upstream_req = state.client.post(&state.config.target_endpoint)
-        .header("Authorization", format!("Bearer {}", state.config.api_key))
+    // Parse the incoming JSON body to auto-detect the model
+    let json_body: Value = serde_json::from_slice(&body).map_err(|e| {
+        error!("Failed to parse JSON body: {}", e);
+        StatusCode::BAD_REQUEST
+    })?;
+
+    let model_name = json_body.get("model").and_then(|m| m.as_str()).unwrap_or("");
+    
+    // Auto-detect routing logic based on model prefix
+    let provider_key = if model_name.starts_with("gpt-") || model_name.starts_with("o1-") {
+        "openai"
+    } else if model_name.starts_with("gemini-") {
+        "gemini"
+    } else {
+        warn!("Unknown model requested: {}, defaulting to openai", model_name);
+        "openai"
+    };
+
+    let provider = state.config.providers.get(provider_key).ok_or_else(|| {
+        error!("Provider configuration missing for {}", provider_key);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    
+    info!("Routing request for model '{}' to provider '{}'", model_name, provider_key);
+
+    let upstream_req = state.client.post(&provider.endpoint)
+        .header("Authorization", format!("Bearer {}", provider.api_key))
         .header("Content-Type", "application/json")
         .header("Accept", "text/event-stream")
         .body(body);
