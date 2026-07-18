@@ -17,6 +17,8 @@ use crate::proxy::{chat_completions_handler, AppState};
 
 #[tokio::main]
 async fn main() {
+    dotenvy::dotenv().ok();
+
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env().add_directive("valve=info".parse().unwrap()))
         .init();
