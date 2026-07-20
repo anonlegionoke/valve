@@ -12,7 +12,7 @@ pub struct ProviderConfig {
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct Config {
-    pub rule: String, // Regex rule
+    pub rules: HashMap<String, String>,
     pub providers: HashMap<String, ProviderConfig>,
 }
 

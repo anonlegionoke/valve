@@ -1,7 +1,7 @@
 use axum::{
     body::Bytes,
     extract::State,
-    http::StatusCode,
+    http::{StatusCode, HeaderMap},
     response::IntoResponse,
     response::sse::{Event, Sse},
 };
@@ -26,6 +26,7 @@ pub struct AppState {
 
 pub async fn chat_completions_handler(
     State(state): State<AppState>,
+    headers: HeaderMap,
     body: Bytes,
 ) -> Result<impl IntoResponse, StatusCode> {
     
@@ -52,7 +53,20 @@ pub async fn chat_completions_handler(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
     
-    info!("Routing request for model '{}' to provider '{}'", model_name, provider_key);
+    // Determine which rule to use
+    let rule_key = headers.get("x-valve-rule")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("default");
+
+    let rule_string = match state.config.rules.get(rule_key) {
+        Some(r) => r.clone(),
+        None => {
+            warn!("Requested rule '{}' not found in configuration", rule_key);
+            return Err(StatusCode::BAD_REQUEST);
+        }
+    };
+    
+    info!("Routing request for model '{}' to provider '{}' using rule '{}'", model_name, provider_key, rule_key);
 
     let upstream_req = state.client.post(&provider.endpoint)
         .header("Authorization", format!("Bearer {}", provider.api_key))
@@ -74,13 +88,12 @@ pub async fn chat_completions_handler(
     let mut stream = Box::pin(stream);
     
     let (tx, rx) = mpsc::channel(32);
-    let config = state.config.clone();
     
     tokio::spawn(async move {
-        let mut engine = match Engine::new(&config.rule) {
+        let mut engine = match Engine::new(&rule_string) {
             Ok(e) => e,
             Err(e) => {
-                error!("Invalid regex rule: {}", e);
+                error!("Invalid regex rule '{}': {}", rule_string, e);
                 return;
             }
         };

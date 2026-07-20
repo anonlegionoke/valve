@@ -1,4 +1,7 @@
-rule = "^[A-Za-z0-9 .,!?]*$"
+[rules]
+default = "^[A-Za-z0-9 .,!?]*$"
+email-only = "^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\\.[a-zA-Z0-9-.]+$"
+json-strict = "^[\\{\\}\\[\\]\\\":,0-9a-zA-Z\\s]*$"
 
 [providers.openai]
 endpoint = "https://api.openai.com/v1/chat/completions"
