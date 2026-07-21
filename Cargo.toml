@@ -10,7 +10,7 @@ dotenvy = "0.15.7"
 eventsource-stream = "0.2.3"
 futures = "0.3.32"
 regex = "1.12.4"
-reqwest = { version = "0.13.4", features = ["stream"] }
+reqwest = { version = "0.13.4", features = ["json", "stream"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.150"
 tokio = { version = "1.52.3", features = ["full"] }
