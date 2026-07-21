@@ -20,4 +20,10 @@ impl Engine {
         self.buffer.push_str(token);
         self.rule.is_match(&self.buffer)
     }
+
+    /// Removes the token from the end of the buffer, used when rolling back a bad token.
+    pub fn pop_token(&mut self, token: &str) {
+        let new_len = self.buffer.len().saturating_sub(token.len());
+        self.buffer.truncate(new_len);
+    }
 }
