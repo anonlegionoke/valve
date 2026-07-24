@@ -58,7 +58,7 @@ pub async fn chat_completions_handler(
         .and_then(|v| v.to_str().ok())
         .unwrap_or("default");
 
-    let rule_string = match state.config.rules.get(rule_key) {
+    let rule_config = match state.config.rules.get(rule_key) {
         Some(r) => r.clone(),
         None => {
             warn!("Requested rule '{}' not found in configuration", rule_key);
@@ -72,10 +72,10 @@ pub async fn chat_completions_handler(
     let client = state.client.clone();
     
     tokio::spawn(async move {
-        let mut engine = match Engine::new(&rule_string) {
+        let mut engine = match Engine::new(&rule_config) {
             Ok(e) => e,
             Err(e) => {
-                error!("Invalid regex rule '{}': {}", rule_string, e);
+                error!("Invalid rule config '{:?}': {}", rule_config, e);
                 return;
             }
         };
