@@ -1,67 +1,56 @@
 # 🚰 Valve
 
-**A Streaming Token-Level Grammar Constraints Engine.**
+Valve is a high-performance, headless HTTP proxy written in Rust that sits between your application and your LLM providers. It enforces strict grammar, regex, and JSON schema constraints on **streaming** LLM responses in real-time, atomically killing streams that violate your rules.
 
-Valve is a high-performance, headless HTTP proxy written in Rust that enforces strict schema constraints on Large Language Model (LLM) outputs in real-time. 
+## Features
 
-## The Core Problem
-Existing guardrail proxies wait for the LLM to finish generating text before they parse the JSON, find a formatting error, and throw the response away. This wastes seconds of user time, API costs, and computing power.
+- **Microsecond Token Validation**: Validates incoming SSE tokens in <30µs. It adds zero noticeable latency to your streams.
+- **Universal LLM Router**: Point your app to `localhost:8080` using the standard OpenAI format. Valve automatically routes `gpt-*` models to OpenAI and `gemini-*` models to Google.
+- **Route-Specific Constraints**: Pass a custom HTTP header (`X-Valve-Rule: json-strict`) from your frontend to instantly apply different Regex or JSON Schema validation rules on a per-request basis.
+- **True JSON Schema Validation**: Don't rely on fragile Regex for structured data. Provide a standard JSON Schema in your config, and Valve will atomically parse the JSON structure as it streams. If the LLM generates a syntax error or violates the schema, Valve catches it instantly.
+- **Self-Healing Streams**: If the LLM hallucinates and breaks your formatting rules, Valve doesn't just drop the connection to your user. It silently terminates the upstream connection, sends a corrective prompt to the LLM, and seamlessly stitches the repaired stream back to your frontend. The end-user never even knows an error occurred.
 
-## The Solution
-Valve acts as a middleman between your application and an LLM provider (like OpenAI). It perfectly mimics the OpenAI Chat API structure, so your frontend app never knows the proxy is there. 
+## Quick Start
 
-Instead of waiting for completion, Valve parses the LLM token stream atomically (token-by-token). Every time a new token arrives via Server-Sent Events (SSE), Valve checks if it conforms to a complex regex state machine. 
+1. Create a `.env` file with your API keys:
+   ```env
+   OPENAI_API_KEY=your_key
+   GEMINI_API_KEY=your_key
+   ```
 
-If the LLM generates a character that violates your schema, **Valve instantly kills the stream and forcefully closes the connection at that exact token.**
+2. Configure your constraints and providers in `config.toml`:
+   ```toml
+   [rules.default]
+   regex = "^[A-Za-z0-9 .,!?]*$"
 
-## Why Rust?
-This requires microsecond execution speeds. Every time a new token arrives (every 10–20 milliseconds), the proxy must perform regex Finite State Machine (FSM) transitions on a live token stream. Rust provides the raw performance necessary to do this without introducing any noticeable lag to the end user.
+   [rules.email-only]
+   regex = "^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\\.[a-zA-Z0-9-.]+$"
 
----
+   [rules.json-strict]
+   schema = { type = "object", properties = { name = { type = "string" } }, required = ["name"] }
 
-## 🚀 Getting Started
+   [providers.openai]
+   endpoint = "https://api.openai.com/v1/chat/completions"
+   api_key = "${OPENAI_API_KEY}"
 
-### 1. Requirements
-- Rust (Cargo)
-- Upstream LLM API key (e.g., OpenAI)
+   [providers.gemini]
+   endpoint = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+   api_key = "${GEMINI_API_KEY}"
+   ```
 
-### 2. Configuration
-Create a `config.toml` file in the root directory. You can define your target endpoint, API key, and the specific regex rule you want to enforce.
+3. Run the proxy:
+   ```bash
+   cargo run --release
+   ```
 
-```toml
-target_endpoint = "https://api.openai.com/v1/chat/completions"
-api_key = "sk-YOUR_API_KEY_HERE"
-
-# Example: A strict rule that only allows typical alphabetic streams
-rule = "^[A-Za-z0-9 .,!?]*$"
-```
-
-### 3. Run the Proxy
-Start the proxy server via the command line:
-
-```bash
-cargo run
-```
-*(By default, the server binds to port 8080. You can change this with `--port`).*
-
-### 4. Test It
-Send a standard OpenAI Chat Completion request to `localhost:8080`. Valve perfectly proxies the request upstream.
-
-```bash
-curl -X POST http://localhost:8080/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "gpt-4",
-    "messages": [{"role": "user", "content": "Say hello!"}],
-    "stream": true
-  }'
-```
-
-If the LLM attempts to generate any character outside your defined regex rule, Valve will instantly print a bright red terminal alert and abort the stream.
-
-## 🛠️ Tech Stack
-- **Axum & Tokio** - Asynchronous web server and routing.
-- **Reqwest** - Upstream API proxying.
-- **EventSource-Stream** - Real-time SSE token interception.
-- **Regex** - The constraints engine.
-- **Clap, Serde, Toml** - Configuration and CLI management.
+4. Route your requests through Valve:
+   ```bash
+   curl -X POST http://localhost:8080/v1/chat/completions \
+     -H "Content-Type: application/json" \
+     -H "X-Valve-Rule: json-strict" \
+     -d '{
+       "model": "gemini-2.5-flash",
+       "messages": [{"role": "user", "content": "Output a JSON object with a single key \"name\" mapping to your name. DO NOT use markdown formatting. Output ONLY raw JSON."}],
+       "stream": true
+     }'
+   ```
