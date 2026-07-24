@@ -1,29 +1,67 @@
 use regex::Regex;
+use serde_json::Value;
+use jsonschema::Validator;
+use crate::config::RuleConfig;
 
-pub struct Engine {
-    buffer: String,
-    rule: Regex,
+pub enum Engine {
+    Regex {
+        buffer: String,
+        rule: Regex,
+    },
+    Json {
+        buffer: String,
+        validator: Validator,
+    }
 }
 
 impl Engine {
-    pub fn new(rule_pattern: &str) -> Result<Self, regex::Error> {
-        let rule = Regex::new(rule_pattern)?;
-        Ok(Self {
-            buffer: String::new(),
-            rule,
-        })
+    pub fn new(config: &RuleConfig) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        match config {
+            RuleConfig::Regex { regex } => {
+                let rule = Regex::new(regex)?;
+                Ok(Self::Regex {
+                    buffer: String::new(),
+                    rule,
+                })
+            }
+            RuleConfig::Schema { schema } => {
+                let validator = jsonschema::validator_for(schema)
+                    .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
+                Ok(Self::Json {
+                    buffer: String::new(),
+                    validator,
+                })
+            }
+        }
     }
 
-    /// Appends the new token and checks if the entire buffer still matches the rule.
-    /// Returns true if valid, false if the rule is violated.
     pub fn check_token(&mut self, token: &str) -> bool {
-        self.buffer.push_str(token);
-        self.rule.is_match(&self.buffer)
+        match self {
+            Self::Regex { buffer, rule } => {
+                buffer.push_str(token);
+                rule.is_match(buffer)
+            }
+            Self::Json { buffer, validator } => {
+                buffer.push_str(token);
+                
+                match serde_json::from_str::<Value>(buffer) {
+                    Ok(val) => {
+                        validator.is_valid(&val)
+                    }
+                    Err(e) => {
+                        e.is_eof()
+                    }
+                }
+            }
+        }
     }
 
-    /// Removes the token from the end of the buffer, used when rolling back a bad token.
     pub fn pop_token(&mut self, token: &str) {
-        let new_len = self.buffer.len().saturating_sub(token.len());
-        self.buffer.truncate(new_len);
+        match self {
+            Self::Regex { buffer, .. } | Self::Json { buffer, .. } => {
+                let new_len = buffer.len().saturating_sub(token.len());
+                buffer.truncate(new_len);
+            }
+        }
     }
 }

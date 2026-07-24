@@ -3,6 +3,14 @@ use std::collections::HashMap;
 use std::fs;
 use std::env;
 use regex::Regex;
+use serde_json::Value;
+
+#[derive(Debug, Deserialize, Clone)]
+#[serde(untagged)]
+pub enum RuleConfig {
+    Regex { regex: String },
+    Schema { schema: Value },
+}
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct ProviderConfig {
@@ -12,7 +20,7 @@ pub struct ProviderConfig {
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct Config {
-    pub rules: HashMap<String, String>,
+    pub rules: HashMap<String, RuleConfig>,
     pub providers: HashMap<String, ProviderConfig>,
 }
 
